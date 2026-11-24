@@ -1,0 +1,22 @@
+# Dépendances
+node_modules/
+*.tgz
+
+# Builds
+dist/
+build/
+
+# Secrets — la clé API Albert ne doit jamais être commitée
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs & divers
+npm-debug.log*
+yarn-error.log*
+*.log
+.DS_Store
+Thumbs.db
