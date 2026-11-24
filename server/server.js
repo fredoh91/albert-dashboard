@@ -1,9 +1,9 @@
 /* ============================================================
- * Albert Dashboard — proxy Express (lecture seule) vers l'API
- * Albert de la DINUM : https://albert.api.etalab.gouv.fr
- *
- * Rôle : relayer les GET /api/{usage,me,keys,models} vers l'API
- * Albert en ajoutant CÔTÉ SERVEUR l'en-tête Authorization.
+ * Albert Dashboard — serveur Express « tout-en-un »
+ *  - API     : relais GET /api/{usage,me,keys,models,limits} vers l'API
+ *              Albert (DINUM) en ajoutant CÔTÉ SERVEUR l'en-tête
+ *              Authorization. Seuls ces endpoints sont proxifiables.
+ *  - Statique : sert le build client (client/dist) + fallback SPA.
  * La clé API ne quitte jamais ce processus : elle est lue dans
  * process.env.ALBERT_API_KEY (fichier server/.env via dotenv).
  * ============================================================ */
@@ -12,32 +12,45 @@
 
 require("dotenv").config();
 
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
 
 const PORT = Number(process.env.PORT) || 3001;
-// En production, le proxy ne doit être joignable que par Apache : écoute en
+// En production, le serveur ne doit être joignable que par Apache : écoute en
 // boucle locale uniquement (HOST surchargeable via l'environnement systemd).
 const HOST = process.env.HOST || "127.0.0.1";
 const ALBERT_BASE_URL =
   process.env.ALBERT_BASE_URL || "https://albert.api.etalab.gouv.fr/v1";
 const API_KEY = process.env.ALBERT_API_KEY;
 
+// Build React servi par Express (option « tout-en-un »). STATIC_DIR permet de
+// pointer vers un autre emplacement en production sans modifier le code.
+const STATIC_DIR =
+  process.env.STATIC_DIR || path.resolve(__dirname, "..", "client", "dist");
+
 // Liste blanche stricte : ces endpoints sont les seuls proxifiables.
 const ENDPOINTS = ["usage", "me", "keys", "models", "limits"];
 
 const app = express();
 
-/* --- Garde-fous avant tout routage --- */
-app.use((req, res, next) => {
+/* --- 1. Statique : sert le build client (index.html, assets/…) ---
+ * Express serveur de fichiers : ne traite que GET/HEAD et ne touche jamais
+ * /api ; les autres méthodes lui passent simplement. */
+app.use(express.static(STATIC_DIR));
+
+/* --- 2. Garde-fous APPLIQUÉS AUX SEULES ROUTES /api/* ---
+ * (le statique doit être accessible même si la clé manque) */
+app.use("/api", (req, res, next) => {
   if (req.method !== "GET") {
     return res.status(405).json({
-      error: "Méthode non autorisée : le proxy est en lecture seule (GET uniquement).",
+      error: "Méthode non autorisée : le serveur est en lecture seule (GET uniquement).",
     });
   }
   if (!API_KEY) {
     return res.status(500).json({
       error:
-        "ALBERT_API_KEY n'est pas configurée côté serveur. Créez le fichier server/.env (modèle : server/.env.example) puis relancez le proxy.",
+        "ALBERT_API_KEY n'est pas configurée côté serveur. Créez le fichier server/.env (modèle : server/.env.example) puis relancez le serveur.",
     });
   }
   next();
@@ -92,25 +105,43 @@ for (const endpoint of ENDPOINTS) {
   });
 }
 
-/* --- 404 pour tout le reste --- */
-app.use((req, res) => {
+/* --- 3. /api inconnue → 404 JSON (jamais le fallback SPA) --- */
+app.use("/api", (req, res) => {
   res.status(404).json({
     error:
-      "Route inconnue. Le proxy n'accepte que GET /api/usage, /api/me, /api/keys, /api/models et /api/limits.",
+      "Route inconnue. Le serveur n'accepte que GET /api/usage, /api/me, /api/keys, /api/models et /api/limits.",
   });
+});
+
+/* --- 4. Fallback SPA : toute autre requête GET reçoit index.html --- */
+app.use((req, res) => {
+  if (req.method !== "GET") {
+    return res.status(405).json({
+      error: "Méthode non autorisée : le serveur est en lecture seule (GET uniquement).",
+    });
+  }
+  const indexFile = path.join(STATIC_DIR, "index.html");
+  if (!fs.existsSync(indexFile)) {
+    return res.status(404).json({
+      error:
+        "Build client introuvable (client/dist absent). Lancez `npm run build` (ou `VITE_BASE_PATH=/albert-dashboard/ npm run build` en production) puis redémarrez le serveur.",
+    });
+  }
+  res.sendFile(indexFile);
 });
 
 /* --- Gestion des erreurs inattendues --- */
 app.use((err, req, res, next) => {
-  console.error("[proxy] erreur interne :", err);
-  res.status(500).json({ error: "Erreur interne du proxy.", detail: err.message });
+  console.error("[server] erreur interne :", err);
+  res.status(500).json({ error: "Erreur interne du serveur.", detail: err.message });
 });
 
 app.listen(PORT, HOST, () => {
-  console.log(`[proxy] Albert Dashboard — proxy prêt sur http://${HOST}:${PORT}`);
+  console.log(`[server] Albert Dashboard — serveur prêt sur http://${HOST}:${PORT}`);
+  console.log(`[server] statique servi depuis : ${STATIC_DIR}`);
   if (!API_KEY) {
     console.warn(
-      "[proxy] AVERTISSEMENT : ALBERT_API_KEY non définie, le proxy refusera toutes les requêtes (HTTP 500)."
+      "[server] AVERTISSEMENT : ALBERT_API_KEY non définie, les routes /api refuseront les requêtes (HTTP 500)."
     );
   }
 });
