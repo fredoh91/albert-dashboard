@@ -85,3 +85,16 @@ apparaître dans le bundle React : elle ne circule qu'entre le proxy et l'API.
 Application destinée à un usage **local ou réseau interne protégé**. Le proxy
 expose la consommation du compte avec la clé API : ne pas déployer sur Internet
 sans ajouter un niveau d'authentification supplémentaire.
+
+## Déploiement Apache
+
+Guide complet pour le serveur Debian (projet hors Docroot, Alias sur `client/dist`,
+reverse-proxy `/api` et service systemd) : voir **[DEPLOIEMENT.md](DEPLOIEMENT.md)**.
+
+Rappel des commandes clés :
+
+```bash
+cd /production/ansm/react/albert-dashboard
+npm ci
+VITE_BASE_PATH=/albert-dashboard/ npm run build   # préfixe sous-répertoire
+```

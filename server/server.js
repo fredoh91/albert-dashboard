@@ -15,6 +15,9 @@ require("dotenv").config();
 const express = require("express");
 
 const PORT = Number(process.env.PORT) || 3001;
+// En production, le proxy ne doit être joignable que par Apache : écoute en
+// boucle locale uniquement (HOST surchargeable via l'environnement systemd).
+const HOST = process.env.HOST || "127.0.0.1";
 const ALBERT_BASE_URL =
   process.env.ALBERT_BASE_URL || "https://albert.api.etalab.gouv.fr/v1";
 const API_KEY = process.env.ALBERT_API_KEY;
@@ -103,8 +106,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Erreur interne du proxy.", detail: err.message });
 });
 
-app.listen(PORT, () => {
-  console.log(`[proxy] Albert Dashboard — proxy prêt sur http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`[proxy] Albert Dashboard — proxy prêt sur http://${HOST}:${PORT}`);
   if (!API_KEY) {
     console.warn(
       "[proxy] AVERTISSEMENT : ALBERT_API_KEY non définie, le proxy refusera toutes les requêtes (HTTP 500)."

@@ -2,7 +2,11 @@
 // Aucune clé API n'apparaît ici : le secret ne circule qu'entre le proxy
 // Express et l'API Albert (côté serveur uniquement).
 
-const API_ROOT = "/api";
+// Préfixe API aligné automatiquement sur le chemin de base du build
+// (import.meta.env.BASE_URL) : "/api" en dev, "/albert-dashboard/api" en
+// production derrière Apache. Aucune clé API n'est en jeu ici.
+const BASE_URL = import.meta.env.BASE_URL || "/";
+const API_ROOT = `${BASE_URL}api`;
 
 export class ApiError extends Error {
   constructor(status, message) {
