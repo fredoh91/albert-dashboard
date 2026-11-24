@@ -110,3 +110,9 @@ export async function fetchModels({ signal } = {}) {
 export async function fetchMe({ signal } = {}) {
   return request(`${API_ROOT}/me`, signal);
 }
+
+// Plafonds par routeur (/v1/limits) : {router_id (numérique), model, limits:[{type,value,remaining}]}.
+export async function fetchLimits({ signal } = {}) {
+  const data = await request(`${API_ROOT}/limits`, signal);
+  return Array.isArray(data?.data) ? data.data : [];
+}

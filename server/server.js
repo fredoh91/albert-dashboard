@@ -20,7 +20,7 @@ const ALBERT_BASE_URL =
 const API_KEY = process.env.ALBERT_API_KEY;
 
 // Liste blanche stricte : ces endpoints sont les seuls proxifiables.
-const ENDPOINTS = ["usage", "me", "keys", "models"];
+const ENDPOINTS = ["usage", "me", "keys", "models", "limits"];
 
 const app = express();
 
@@ -93,7 +93,7 @@ for (const endpoint of ENDPOINTS) {
 app.use((req, res) => {
   res.status(404).json({
     error:
-      "Route inconnue. Le proxy n'accepte que GET /api/usage, /api/me, /api/keys et /api/models.",
+      "Route inconnue. Le proxy n'accepte que GET /api/usage, /api/me, /api/keys, /api/models et /api/limits.",
   });
 });
 

@@ -25,7 +25,7 @@ albert-dashboard/
         ├── App.jsx
         ├── api.js        # fetchers vers /api/* (aucune clé ici)
         ├── format.js     # formatage fr-FR
-        └── components/   # Header, KpiCards, UsageChart, UsageTable, Filters
+        └── components/   # Header, Tabs, KpiCards, KeysTable, LimitsTable, Filters, UsageChart, UsageTable
 ```
 
 ## Prérequis
@@ -57,11 +57,27 @@ apparaître dans le bundle React : elle ne circule qu'entre le proxy et l'API.
 ## Fonctionnalités
 
 - Identité du compte (`/v1/me`) : nom, courriel, organisation, expiration.
-- KPIs : tokens consommés, requêtes, jours avec activité, coût estimé.
-- Graphique « tokens par jour » (barres empilées prompt + complétion, Recharts).
-- Tableau détaillé par jour (tri décroissant, ligne de totaux, formatage fr-FR).
+- Proxy (liste blanche) : `usage`, `me`, `keys`, `models`, **`limits`** —
+  l'endpoint `/v1/limits` expose la correspondance officielle
+  `router_id` (numérique) → modèle et les quotas par routeur.
+- Navigation par **onglets** : « Tokens », « Clefs API », « Limites du compte »
+  (avec compteur sur chaque onglet).
+  - Onglet **Tokens** — barre de filtres intégrée (période 7 / 30 / 90 / 365 jours,
+    clé `/v1/keys` paginé, modèle `/v1/models`, endpoint en bonus), puis KPIs
+    (tokens consommés, requêtes, jours avec activité, coût estimé), graphique
+    « tokens par jour » (barres empilées prompt + complétion, Recharts) et
+    tableau détaillé par jour (tri décroissant, ligne de totaux, formatage fr-FR).
+  - Onglet **Clefs API** — liste complète (pagination), id, nom, dates de création
+    et d'expiration, statut active/expirée/révoquée, sélection d'une clef par
+    clic de ligne (jamais la valeur de la clef).
+  - Onglet **Limites du compte** — une ligne par routeur (source `/v1/limits`) :
+    colonnes **Modèle**, **Router_id** (id numérique, maîtrisé en vis-à-vis),
+    et plafonds **rpm / rpd / tpm / tpd** avec le quota restant (« reste … »
+    affiché dès qu'une partie a été consommée). L'endpoint `/v1/limits` fournit
+    officiellement la correspondance `router_id` (numérique) → nom du modèle
+    (ex. `#342 → bge-m3`).
 - Filtres : période (7 / 30 / 90 / 365 jours), clé (`/v1/keys`, paginé),
-  modèle (`/v1/models`), endpoint (bonus).
+  modèle (`/v1/models`), endpoint (bonus) — intégrés à l'onglet « Tokens ».
 - Bandeaux d'erreur clairs (401 / 403 / 422 / 429…) et états de chargement.
 
 ## Sécurité

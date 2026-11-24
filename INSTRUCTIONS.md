@@ -82,9 +82,11 @@ $sumTokens = ($response.data | Measure-Object -Property total_tokens -Sum).Sum
 
 1. **En-tête** : nom de l'utilisateur (`/me`), id d'organisation, date d'expiration éventuelle du compte.
 2. **KPIs** (pour la période sélectionnée) : total tokens consommés, total requêtes, nombre de jours avec activité.
-3. **Graphique** : barres « tokens par jour » (buckets journaliers renvoyés par `/usage`). Librairie recommandée : **Recharts**.
-4. **Tableau détaillé** : par jour, colonnes Date / Prompt tokens / Completion tokens / Total tokens / Requêtes, avec ligne de totaux. Tri par date décroissante, formatage des nombres en français.
-5. **Filtres** :
+3. **Section « Clefs API »** : tableau listant **toutes** les clefs du compte, alimenté par `/keys` (attention : paginé, boucler sur `offset`/`limit=100` jusqu'à épuiser `total`). Colonnes : Id, Nom, Date de création (convertie depuis son timestamp Unix le cas échéant), Date d'expiration (ou « aucune » si null), Statut (active / expirée, en comparant `expires` à la date du jour). Mettre en valeur la clef sélectionnée dans le filtre, et permettre de cliquer une ligne pour appliquer directement le filtre `key_id` correspondant. La clef ne doit **jamais** être affichée en clair (jamais la valeur `sk-...`).
+4. **Section « Limites du compte »** (bonus) : tableau des plafonds venant de `me.limits`, colonnes Router_id / Type (rpm, rpd, tpm, tpd) / Valeur, en précisant en note que la correspondance router_id → nom de modèle n'est pas exposée par l'API.
+5. **Graphique** : barres « tokens par jour » (buckets journaliers renvoyés par `/usage`). Librairie recommandée : **Recharts**.
+6. **Tableau détaillé** : par jour, colonnes Date / Prompt tokens / Completion tokens / Total tokens / Requêtes, avec ligne de totaux. Tri par date décroissante, formatage des nombres en français.
+7. **Filtres** :
    - Période : 7 / 30 / 90 / 365 derniers jours (calcul des timestamps Unix côté client).
    - Clef : menu déroulant alimenté par `/keys` (paginé), envoyé comme `key_id` si sélectionné.
    - Modèle : menu déroulant alimenté par `/models`, envoyé comme `model` si sélectionné.
@@ -117,7 +119,7 @@ albert-dashboard/
         ├── main.jsx
         ├── App.jsx
         ├── api.js            # fetchers vers /api/* (aucune clef ici)
-        └── components/       # Header, KpiCards, UsageChart, UsageTable, Filters
+        └── components/       # Header, KpiCards, KeysTable, LimitsTable, UsageChart, UsageTable, Filters
 ```
 
 ### Scripts npm (racine)
@@ -141,7 +143,7 @@ albert-dashboard/
 ## Critères d'acceptation
 
 1. `npm install` puis `npm run dev` à la racine démarrent proxy + front sans erreur.
-2. La page affiche le nom de l'utilisateur, les KPIs, le graphique et le tableau sur 30 jours.
+2. La page affiche le nom de l'utilisateur, les KPIs, la liste complète des clefs API (y compris au-delà de la première page de pagination), le graphique et le tableau sur 30 jours.
 3. Les filtres période / clef / modèle modifient réellement la requête `start_time`/`key_id`/`model` et rechargent les données.
 4. Aucune clef API n'est présente dans le code cliente ni dans le build (`grep -r "sk-" client/dist` ne doit rien donner).
 5. Une erreur réseau ou une clef invalide affiche un message clair, pas un écran blanc.

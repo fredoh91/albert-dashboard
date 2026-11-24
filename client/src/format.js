@@ -18,6 +18,12 @@ export function formatCurrency(value) {
   });
 }
 
+// Date formatée française ("—" si invalide).
+export function formatDate(value) {
+  const d = toDate(value);
+  return d ? d.toLocaleDateString("fr-FR") : "—";
+}
+
 // Accepte un timestamp Unix (en secondes), un timestamp millisecondes ou une chaîne ISO.
 export function toDate(value) {
   if (value == null || value === "") return null;
