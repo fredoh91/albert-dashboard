@@ -152,7 +152,7 @@ export default function App() {
           ) : (
             <>
               <KpiCards totals={totals} />
-              <UsageChart data={usage} />
+              <UsageChart data={usage} period={period} />
               <UsageTable data={usage} totals={totals} />
             </>
           )}

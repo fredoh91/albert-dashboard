@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatNumber } from "../format.js";
+import { buildDailySeries } from "../usageSeries.js";
 
 const shortDate = (ts) =>
   new Date(ts * 1000).toLocaleDateString("fr-FR", {
@@ -18,29 +19,21 @@ const shortDate = (ts) =>
     year: "2-digit",
   });
 
-export default function UsageChart({ data }) {
-  const chartData = useMemo(
-    () =>
-      [...data]
-        .sort((a, b) => a.start_time - b.start_time)
-        .map((b) => ({
-          startTime: b.start_time,
-          label: shortDate(b.start_time),
-          prompt: Number(b.prompt_tokens) || 0,
-          completion: Number(b.completion_tokens) || 0,
-          total: Number(b.total_tokens) || 0,
-        })),
-    [data]
-  );
-
-  if (chartData.length === 0) {
-    return (
-      <section className="card" aria-label="Graphique de consommation">
-        <h2>Tokens par jour</h2>
-        <p className="empty-state">Aucune consommation de tokens sur la période sélectionnée.</p>
-      </section>
-    );
-  }
+export default function UsageChart({ data, period }) {
+  // Série continue : un emplacement par jour calendaire depuis le début de la
+  // période sélectionnée, les jours sans activité apparaissent à zéro.
+  const chartData = useMemo(() => {
+    const now = Date.now();
+    const endTime = Math.floor(now / 1000);
+    const startTime = Math.floor((now - period * 86_400_000) / 1000);
+    return buildDailySeries(data, { startTime, endTime }).map((b) => ({
+      startTime: b.start_time,
+      label: shortDate(b.start_time),
+      prompt: Number(b.prompt_tokens) || 0,
+      completion: Number(b.completion_tokens) || 0,
+      total: Number(b.total_tokens) || 0,
+    }));
+  }, [data, period]);
 
   return (
     <section className="card" aria-label="Graphique de consommation">
