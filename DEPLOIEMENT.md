@@ -8,6 +8,11 @@ serveur Express (`server/.env`, hors du docroot).
 
 URL publique finale : `https://nam-pgs-2.ansm-intra.fr/albert-dashboard/`
 
+> ✅ **État actuel (validé en production)** : configuration **Phase 5** active — Apache
+> reverse-proxy **global** vers Express (statique **+** API). L'URL publique
+> fonctionne depuis le navigateur ; `apachectl configtest` → Syntax OK et les
+> vérifications (`--resolve`, voir plus bas) sont OK.
+
 ## Architecture
 
 | Brique                          | Rôle                                         | Écoute sur                  |
@@ -73,22 +78,106 @@ RestartSec=2
 WantedBy=multi-user.target
 ```
 
-Puis :
+### Créer le fichier du service
+
+Le dossier `/etc/systemd/system/` appartient à **root** : toute écriture doit
+se faire via `sudo`.
+
+Méthode éditeur (simple) :
 
 ```bash
-systemctl daemon-reload
-systemctl enable --now albert-dashboard
-systemctl status albert-dashboard          # doit être "active (running)"
+sudo nano /etc/systemd/system/albert-dashboard.service
+# coller le bloc [Unit]…[Install] ci-dessus, puis Ctrl+X, O, Entrée
+```
+
+Équivalent en une seule commande non interactive (recommandé, copier-coller) :
+
+```bash
+sudo tee /etc/systemd/system/albert-dashboard.service >/dev/null <<'EOF'
+[Unit]
+Description=Albert Dashboard (Express : statique + API)
+After=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/production/ansm/react/albert-dashboard/server
+EnvironmentFile=/production/ansm/react/albert-dashboard/server/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+Variante avec `touch` puis `vim` (le `touch` doit être en `sudo`) :
+
+```bash
+sudo touch /etc/systemd/system/albert-dashboard.service
+sudo vim /etc/systemd/system/albert-dashboard.service
+```
+
+> `sudo` est indispensable : sans lui, `touch`/éditeurs échouent en
+> `Permission denied`, et `systemctl daemon-reload` renvoie
+> `Reload daemon failed: Interactive authentication required.`
+> (D-Bus + polkit sans agent interactif dans une session bastion).
+
+### Activer, vérifier et dépanner
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now albert-dashboard
+sudo systemctl status albert-dashboard          # doit être "active (running)"
+sudo systemctl is-enabled albert-dashboard      # doit afficher "enabled"
+```
+
+Vérifier la syntaxe de l'unité (silencieuse pour ce fichier si elle est bonne) :
+
+```bash
+systemd-analyze verify /etc/systemd/system/albert-dashboard.service
+```
+
+> ⚠️ Si `systemd-analyze verify` affiche des avertissements sur
+> `shiny-server.service` ou `apache2.service.d/limits.conf` (marqués
+> exécutable ou world-writable), ce sont des unités **préexistantes du
+> serveur**, sans rapport avec Albert. systemd les ignore (« Proceeding
+> anyway ») et continue. Nettoyage facultatif :
+> `sudo chmod 644 <fichier>` puis `sudo systemctl daemon-reload`.
+
+Service démarré, tester Express **directement** (avant même Apache) :
+
+```bash
 curl -s http://127.0.0.1:3001/             # doit répondre index.html
 curl -s http://127.0.0.1:3001/api/me       # JSON (200, ou 401 si clé invalide)
 ```
 
+En cas d'échec du service :
 
-## 4. Configuration Apache — PHASE TRANSITOIRE (recommandée au début)
+```bash
+sudo journalctl -u albert-dashboard -n 30 --no-pager   # cause du problème
+```
 
-On garde en parallèle le statique servi par Apache (Alias + rsync) et le
-`ProxyPass` `/api`. Cette phase permet de tester la bascule sans tout modifier
-d'un coup.
+
+## 4. Configuration Apache — PHASE TRANSITOIRE (référence / repli)
+
+⚠️ Cette phase a été **appliquée puis remplacée** par la Phase 5 (config
+actuellement en place). Elle est conservée ici comme référence et repli.
+
+> En transitoire, on gardait en parallèle le statique servi par Apache et le
+> `ProxyPass` `/api`, pour tester la bascule sans tout modifier d'un coup.
+
+Deux options possibles pour le statique de cette phase :
+- **Option A — rsync vers le docroot** : copie de `client/dist` dans
+  `…/home/www/albert-dashboard/` (servi automatiquement par `DocumentRoot`).
+- **Option B — Alias direct** (celle retenue lors du basculement) : Apache sert
+  `client/dist` **directement**, **sans rsync**. L'Alias **doit** être déclaré
+  **après** le `ProxyPass` pour que `/api` reste relayé vers Express.
+
+> Prérequis : la section 3 doit être terminée et les 2 curl locaux
+> (`127.0.0.1:3001`) doivent répondre **avant** de configurer Apache — cela
+> isole les erreurs côté Express de celles côté Apache.
 
 ```apache
 # ./sites-enabled/nam-pgs.ansm-intra.fr.conf — dans le <VirtualHost> *:443
@@ -96,7 +185,7 @@ d'un coup.
 ProxyPass        /albert-dashboard/api http://127.0.0.1:3001/api
 ProxyPassReverse /albert-dashboard/api http://127.0.0.1:3001/api
 
-# 4b. Statique servi par Apache (copie de client/dist dans le docroot)
+# 4b. Statique — Option B retenue ici (Alias direct vers le build, sans rsync)
 Alias /albert-dashboard /production/ansm/react/albert-dashboard/client/dist
 <Directory /production/ansm/react/albert-dashboard/client/dist>
     Options -Indexes -MultiViews
@@ -108,15 +197,19 @@ Alias /albert-dashboard /production/ansm/react/albert-dashboard/client/dist
 Puis :
 
 ```bash
-apachectl configtest && systemctl reload apache2
-# copier le build dans le docroot pour la phase 4b :
-rsync -az --delete client/dist/ /production/www/clients/nam-pgs.ansm-intra.fr/home/www/albert-dashboard/
+sudo apachectl configtest && sudo systemctl reload apache2
+# (Option A uniquement) copier le build dans le docroot :
+sudo -u www-data rsync -az --delete client/dist/ /production/www/clients/nam-pgs.ansm-intra.fr/home/www/albert-dashboard/
 ```
 
 > ⚠️ Le `.env` doit rester dans `server/` (hors du docroot). Ne JAMAIS copier
 > `server/.env` dans le docroot, sinon la clé serait servie publiquement.
 
-## 5. Configuration Apache — PHASE FINALE « Express tout-en-un »
+## 5. Configuration Apache — PHASE FINALE « Express tout-en-un » ✅ active
+
+> C'est la configuration **actuellement en place sur le serveur** (validée).
+> Bloc inséré dans `…/sites-enabled/nam-pgs.ansm-intra.fr.conf`, dans le
+> `<VirtualHost *:443>`, en **remplacement** des blocs 4a + 4b.
 
 Express servant désormais statique + API, Apache ne fait plus que du
 reverse-proxy généralisé. On **remplace** les 2 blocs de la phase 4 par un
@@ -130,7 +223,7 @@ ProxyPassReverse /albert-dashboard/ http://127.0.0.1:3001/
 Puis :
 
 ```bash
-apachectl configtest && systemctl reload apache2
+sudo apachectl configtest && sudo systemctl reload apache2
 ```
 
 > La bascule est réversible en 1 ligne : il suffit de repasser sur les 2 blocs
@@ -148,7 +241,7 @@ git pull                                    # ou remplacer les sources
 
 Paramètres utiles :
 ```bash
-USE_RSYNC=1 ./deploy-albert.sh              # + copie rsync vers le docroot (phase transitoire)
+USE_RSYNC=1 ./deploy-albert.sh              # (Phase 4/Option A only) + rsync docroot — inutile en Phase 5
 DO_NPM_CI=1 ./deploy-albert.sh              # + `npm ci` avant le build
 APP_NAME=autre-app BASE_PATH=/autre-app/ PORT=3002 ./deploy-albert.sh  # autre appli
 ```
@@ -175,6 +268,37 @@ Vérification qu'un port est libre : `sudo ss -ltnp | grep <port>`.
 
 
 ## Vérifications post-déploiement
+
+**Niveau 1 — Express en direct** (sans Apache ; sert à isoler les problèmes) :
+
+```bash
+# Statique : doit répondre index.html préfixé /albert-dashboard/
+curl -s http://127.0.0.1:3001/
+#   → attendu : <script ... src="/albert-dashboard/assets/index-….js"></script>
+
+# API : doit renvoyer du JSON userInfo/limits (200, ou 401 si clé invalide)
+curl -s http://127.0.0.1:3001/api/me
+#   → attendu (exemple observé) : {"object":"userInfo","id":10009,
+#      "name":"Nicolas Delemer","organization_id":161,"limits":[…12 routeurs…]}
+```
+
+**Niveau 1bis — À travers Apache, depuis le serveur** :
+
+> Le nom `nam-pgs-2.ansm-intra.fr` n'est **pas** résolu par le DNS local (il ne
+> l'est que par le proxy/DNS interne de l'entreprise). Un `curl` direct renvoie
+> donc `000`. On force la résolution vers le serveur avec `--resolve` :
+
+```bash
+curl -sk --resolve nam-pgs-2.ansm-intra.fr:443:127.0.0.1 \
+  -I https://nam-pgs-2.ansm-intra.fr/albert-dashboard/ | head -n 1          # 200
+curl -sk --resolve nam-pgs-2.ansm-intra.fr:443:127.0.0.1 \
+  https://nam-pgs-2.ansm-intra.fr/albert-dashboard/api/me | head -c 120     # JSON userInfo
+curl -sk --resolve nam-pgs-2.ansm-intra.fr:443:127.0.0.1 \
+  -o /dev/null -w '%{http_code}\n' \
+  https://nam-pgs-2.ansm-intra.fr/albert-dashboard/server/.env              # 404 (protégé)
+```
+
+**Niveau 2 — À travers Apache** (URL publique, depuis le réseau interne) :
 
 ```bash
 # Statique servi (phase finale : via Apache /albert-dashboard/)
