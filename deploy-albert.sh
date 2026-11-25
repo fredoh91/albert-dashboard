@@ -47,9 +47,11 @@ if [ "$USE_RSYNC" = "1" ]; then
 fi
 
 # 4. Redémarrage du service Express (statique + API)
+# `sudo` est requis : sans lui, systemd renvoie
+# "Interactive authentication required." (D-Bus/polkit sans agent interactif).
 if systemctl is-active --quiet "$SYSTEMD_SVC"; then
   echo "==> restart systemd : $SYSTEMD_SVC"
-  systemctl restart "$SYSTEMD_SVC"
+  sudo systemctl restart "$SYSTEMD_SVC"
 else
   echo "!!> l'unité systemd '$SYSTEMD_SVC' n'est pas active — démarrage manuel :"
   echo "    cd $SRC/server && node server.js &"
